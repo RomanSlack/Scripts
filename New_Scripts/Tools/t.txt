@@ -1,0 +1,110 @@
+using UnityEngine;
+using System.Diagnostics;
+using System.Text;
+using System.Collections;
+using TMPro;
+
+public class AgentBehavior : MonoBehaviour
+{
+    // Identifier for the agent
+    public string agentName = "Agent_1";
+    
+    // UI elements for the dialogue box
+    public TMP_Text dialogueText;
+    public GameObject dialoguePanel;
+
+    // Path to your local Ollama model
+    public string OLLAMA_PATH = @"C:\Users\roman\AppData\Local\Programs\Ollama\ollama.exe"; // Adjust this path as necessary
+    private const string MODEL_NAME = "llama3";
+
+    // Reference to the Interpreter
+    private Interpreter interpreter;
+
+    // Track whether Ollama has been queried
+    private bool isPrompting = false;
+
+    // Mood variable that can be customized in the Inspector or hardcoded
+    public string mood = "sleepy and want to be somewhere familiar"; // Default mood
+
+    void Start()
+    {
+        // Ensure the dialogue panel is visible
+        dialoguePanel.SetActive(true);
+        
+        // Find and reference the Interpreter
+        interpreter = FindObjectOfType<Interpreter>();
+    }
+
+    void Update()
+    {
+        // Check if the spacebar is pressed
+        if (Input.GetKeyDown(KeyCode.Space) && !isPrompting)
+        {
+            // Trigger the Ollama query with a hardcoded prompt
+            isPrompting = true; // Prevent multiple triggers
+
+            // Dynamically include the mood in the prompt
+
+            string initialPrompt = $"Where do you want to move? You exist as an agent in a simplistic multiagent environment. You have 4 options (park, home, gym, library). Please briefly respond with which one you want to choose, and then shortly explain why. Let's assume right now your mood is {mood}.";
+
+            //string initialPrompt = $"Pleae tell me about george washington in a short little paragrapgh";
+
+            StartCoroutine(AskOllama(initialPrompt));
+        }
+    }
+
+    // Function to request a response from the locally running Ollama model
+    public IEnumerator AskOllama(string prompt)
+    {
+        // Format the arguments to pass to the local model
+        string arguments = $"run {MODEL_NAME} \"{prompt}\"";
+
+        // Set up the process to execute Ollama
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = OLLAMA_PATH,
+            Arguments = arguments,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true
+        };
+
+        // Start the process and read output
+        using (Process process = new Process { StartInfo = startInfo })
+        {
+            StringBuilder output = new StringBuilder();
+            process.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    output.AppendLine(e.Data);
+                }
+            };
+
+            // Start the process and begin reading the output
+            process.Start();
+            process.BeginOutputReadLine();
+
+            // Wait for the process to exit
+            yield return new WaitUntil(() => process.HasExited);
+
+            // Get the result from the output
+            string result = output.ToString().Trim();
+
+            // Display the actual response from Ollama in the dialogue box
+            ShowDialogue(result);
+
+            // Send the response to the interpreter
+            interpreter.ProcessAgentResponse(result, agentName);
+
+            isPrompting = false; // Allow prompting again
+        }
+    }
+
+    // Function to display the dialogue on the UI
+    public void ShowDialogue(string message)
+    {
+        dialoguePanel.SetActive(true); // Activate the dialogue panel
+        dialogueText.text = message;   // Set the dialogue text to the message
+    }
+}
