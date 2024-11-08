@@ -49,7 +49,7 @@ public class GridManager : MonoBehaviour
                 bool walkable = !Physics2D.OverlapCircle(worldPoint, nodeSize / 2, obstacleLayer);
 
                 grid[x, y] = new Node(walkable, worldPoint, x, y);
-                Debug.Log($"Node ({x},{y}) at {worldPoint} - Walkable: {walkable}");
+                //Debug.Log($"Node ({x},{y}) at {worldPoint} - Walkable: {walkable}");
             }
         }
     }

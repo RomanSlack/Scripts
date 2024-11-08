@@ -6,20 +6,22 @@ public class Tool_Move : MonoBehaviour
 {
     public Transform target;  // The target position
     public float pathfindingMoveSpeed = 2f;
+    public Tool_Conversation conversationTool;  // Reference to the Tool_Conversation component
 
     private GridManager gridManager;
     private Animator animator;
     private Rigidbody2D rb;
-
     private bool isPathfinding = false;
     private List<Node> currentPath = new List<Node>();
+    private AgentBehavior agentBehavior; // Reference to the agent's behavior
 
     private void Awake()
     {
         gridManager = FindObjectOfType<GridManager>();
-        animator = GetComponent<Animator>();  // Ensure each agent gets its own Animator
+        animator = GetComponent<Animator>();
         rb = GetComponent<Rigidbody2D>();
-        rb.interpolation = RigidbodyInterpolation2D.Interpolate; // Smooth out Rigidbody movement
+        rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+        agentBehavior = GetComponent<AgentBehavior>(); // Reference to AgentBehavior script
     }
 
     private void Start()
@@ -27,16 +29,14 @@ public class Tool_Move : MonoBehaviour
         rb.gravityScale = 0f; // Disable gravity for 2D top-down movement
     }
 
-    // Main function to execute the move based on the destination
     public void ExecuteMove(string destination)
     {
         Vector3 targetPosition = ConvertDestinationToCoordinates(destination);
 
-        // Set the target position and start pathfinding
         if (targetPosition != Vector3.zero)
         {
             target.position = targetPosition;
-            Debug.Log("Target Position Set: " + targetPosition); // Debug: Check if the target position is set
+            Debug.Log("Target Position Set: " + targetPosition);
             StartPathfinding(targetPosition);
         }
         else
@@ -45,38 +45,32 @@ public class Tool_Move : MonoBehaviour
         }
     }
 
-    // Function to convert destination names to coordinates
     private Vector3 ConvertDestinationToCoordinates(string destination)
     {
-        // Updated coordinates for each location
         switch (destination.ToUpper())
         {
             case "PARK":
-                return new Vector3(-10.41f, 11.53f, 0);  // Updated coordinates for Park
+                return new Vector3(-10.41f, 11.53f, 0);
             case "HOME":
-                return new Vector3(-4f, -7f, 0); // Updated coordinates for Home
+                return new Vector3(-4f, -7f, 0);
             case "GYM":
-                return new Vector3(14f, -1.82f, 0);  // Updated coordinates for Gym
+                return new Vector3(14f, -1.82f, 0);
             case "LIBRARY":
-                return new Vector3(3.65f, 1.97f, 0);  // Updated coordinates for Library
+                return new Vector3(3.65f, 1.97f, 0);
             default:
                 Debug.LogWarning("Unknown destination: " + destination);
                 return Vector3.zero;
         }
     }
 
-    // Function to start pathfinding to the target
     private void StartPathfinding(Vector3 targetPosition)
     {
-        StopAllCoroutines(); // Stop any existing pathfinding coroutine
-        Debug.Log("Starting pathfinding to: " + targetPosition); // Debug: Check if pathfinding is starting
-        StartCoroutine(FindPath(transform.position, targetPosition)); // Begin pathfinding to the new target
+        StopAllCoroutines();
+        StartCoroutine(FindPath(transform.position, targetPosition));
     }
 
     private IEnumerator FindPath(Vector3 startPos, Vector3 targetPos)
     {
-        Debug.Log("Finding Path from " + startPos + " to " + targetPos); // Debug: Check start and target positions
-
         Node startNode = gridManager.GetNodeFromWorldPoint(startPos);
         Node targetNode = gridManager.GetNodeFromWorldPoint(targetPos);
 
@@ -108,8 +102,6 @@ public class Tool_Move : MonoBehaviour
             if (currentNode == targetNode)
             {
                 currentPath = RetracePath(startNode, targetNode);
-                Debug.Log("Path found with " + currentPath.Count + " nodes."); // Debug: Check if path is found
-                isPathfinding = true;
                 StartCoroutine(MoveAlongPath(currentPath));
                 yield break;
             }
@@ -151,34 +143,36 @@ public class Tool_Move : MonoBehaviour
     }
 
     private IEnumerator MoveAlongPath(List<Node> path)
-{
-    foreach (Node node in path)
     {
-        Vector3 targetPos = node.worldPosition;
-        Debug.Log("Moving to " + targetPos); // Debug: Check movement to each node
-        while (Vector3.Distance(transform.position, targetPos) > 0.1f)
+        foreach (Node node in path)
         {
-            Vector3 newPosition = Vector3.MoveTowards(transform.position, targetPos, pathfindingMoveSpeed * Time.deltaTime);
-            rb.MovePosition(newPosition);
+            Vector3 targetPos = node.worldPosition;
+            while (Vector3.Distance(transform.position, targetPos) > 0.1f)
+            {
+                Vector3 newPosition = Vector3.MoveTowards(transform.position, targetPos, pathfindingMoveSpeed * Time.deltaTime);
+                rb.MovePosition(newPosition);
 
-            Vector2 direction = (targetPos - transform.position).normalized;
-            animator.SetFloat("moveX", direction.x);
-            animator.SetFloat("moveY", direction.y);
-            animator.SetBool("isMoving", true);
+                Vector2 direction = (targetPos - transform.position).normalized;
+                animator.SetFloat("moveX", direction.x);
+                animator.SetFloat("moveY", direction.y);
+                animator.SetBool("isMoving", true);
 
-            yield return null; // Use normal frame updates for better control
+                yield return null;
+            }
+
+            rb.MovePosition(targetPos);
         }
 
-        // Ensure exact position alignment with target node
-        rb.MovePosition(targetPos);
+        isPathfinding = false;
+        animator.SetBool("isMoving", false);
+
+        // Initiate a conversation with another agent once movement completes
+        if (conversationTool != null && agentBehavior != null)
+        {
+            conversationTool.StartConversation(agentBehavior, agentBehavior); // Passing agentBehavior for both parameters for testing
+        }
     }
 
-    isPathfinding = false;
-    animator.SetBool("isMoving", false);
-}
-
-
-    // Get the distance between two nodes
     private int GetDistance(Node nodeA, Node nodeB)
     {
         int distX = Mathf.Abs(nodeA.gridX - nodeB.gridX);

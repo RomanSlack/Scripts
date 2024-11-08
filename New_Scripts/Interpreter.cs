@@ -15,7 +15,6 @@ public class Interpreter : MonoBehaviour
     public string modelName = "llama3";
 
     // Function to process the agent's response and generate structured output
-    // Now passing specific agent's Tool_Move and Tool_Reset scripts directly
     public void ProcessAgentResponse(string agentResponse, string agentName, Tool_Move moveTool, Tool_Reset resetTool)
     {
         // Create the prompt for the interpreter
@@ -23,7 +22,7 @@ public class Interpreter : MonoBehaviour
                         "You will respond with ONLY a structured output in this format: ['agent_#', TOOL, CONTEXT]. " +
                         "You can identify 2 tools: MOVE (for moving to a location) or ERROR (if the response doesn't make sense). The context for MOVE will be one of these locations: HOME, LIBRARY, GYM, or PARK." +
                         $" The agent's name is {agentName}, and their response was: \"{agentResponse}\".";
-
+                        
         // Call the interpreter (Ollama model)
         StartCoroutine(AskInterpreter(prompt, moveTool, resetTool));
     }
@@ -37,7 +36,7 @@ public class Interpreter : MonoBehaviour
         // Set up the process to execute Ollama (interpreter-specific)
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
-            FileName = ollamaPath,  // The interpreter's specific LLM path
+            FileName = ollamaPath,
             Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,

@@ -30,6 +30,7 @@ public class AgentBehavior : MonoBehaviour
 
     // Track whether Ollama has been queried
     private bool isPrompting = false;
+    private string lastResponse;
 
     void Start()
     {
@@ -97,14 +98,27 @@ public class AgentBehavior : MonoBehaviour
         }
     }
 
+    public string GetCurrentResponse()
+    {
+        return dialogueText.text;
+    }
+
+    // Method to generate a response based on another agent's input
+    public IEnumerator GenerateResponse(string input)
+    {
+        string prompt = $"You are talking to another agent. They said: '{input}'. How would you respond?";
+        yield return AskOllama(prompt);
+    }
+
+    public string GetLastResponse()
+    {
+        return lastResponse;
+    }
+
     public void ShowDialogue(string message)
     {
         dialoguePanel.SetActive(true);
         dialogueText.text = message;
-    }
-
-      public string GetCurrentResponse()
-    {
-        return dialogueText.text;
+        lastResponse = message;  // Store the last response for conversation
     }
 }
