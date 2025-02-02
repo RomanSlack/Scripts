@@ -1,32 +1,43 @@
 using UnityEngine;
-using System.Collections;
-using System.Collections.Generic;
+using UnityEngine.AI;
 
 public class Tool_Move : MonoBehaviour
 {
-    public Transform target;  // The target position
-    public float pathfindingMoveSpeed = 2f;
-    public Tool_Conversation conversationTool;  // Reference to the Tool_Conversation component
-
-    private GridManager gridManager;
+    private NavMeshAgent agent;
     private Animator animator;
-    private Rigidbody2D rb;
-    private bool isPathfinding = false;
-    private List<Node> currentPath = new List<Node>();
-    private AgentBehavior agentBehavior; // Reference to the agent's behavior
+
+    public float proximityRadius = 5f; // Radius to detect nearby agents
+    public LayerMask agentLayer; // Layer for detecting agents
+
+    private AgentBehavior parentAgent; // Reference to the parent AgentBehavior script
 
     private void Awake()
     {
-        gridManager = FindObjectOfType<GridManager>();
+        agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
-        rb = GetComponent<Rigidbody2D>();
-        rb.interpolation = RigidbodyInterpolation2D.Interpolate;
-        agentBehavior = GetComponent<AgentBehavior>(); // Reference to AgentBehavior script
+        parentAgent = GetComponent<AgentBehavior>();
     }
 
     private void Start()
     {
-        rb.gravityScale = 0f; // Disable gravity for 2D top-down movement
+        animator.SetBool("isWalking", false);
+        agent.baseOffset = 0.1f;
+    }
+
+    private void Update()
+    {
+        if (IsAtDestination())
+        {
+            StopAgent();
+        }
+        else if (agent.velocity.sqrMagnitude > 0.1f)
+        {
+            StartWalking();
+        }
+        else
+        {
+            StopWalking();
+        }
     }
 
     public void ExecuteMove(string destination)
@@ -35,9 +46,8 @@ public class Tool_Move : MonoBehaviour
 
         if (targetPosition != Vector3.zero)
         {
-            target.position = targetPosition;
-            Debug.Log("Target Position Set: " + targetPosition);
-            StartPathfinding(targetPosition);
+            Debug.Log($"Moving to: {targetPosition}");
+            agent.SetDestination(targetPosition);
         }
         else
         {
@@ -47,136 +57,72 @@ public class Tool_Move : MonoBehaviour
 
     private Vector3 ConvertDestinationToCoordinates(string destination)
     {
+        // Random offset within a 5-unit range
+        float offsetX = Random.Range(-5f, 5f);
+        float offsetZ = Random.Range(-5f, 5f);
+
         switch (destination.ToUpper())
         {
             case "PARK":
-                return new Vector3(-10.41f, 11.53f, 0);
+                return new Vector3(215.586f + offsetX, 0.175f, 168.429f + offsetZ);
             case "HOME":
-                return new Vector3(-4f, -7f, 0);
+                return new Vector3(192.77f + offsetX, 0.175f, 178.854f + offsetZ);
             case "GYM":
-                return new Vector3(14f, -1.82f, 0);
+                return new Vector3(215.88f + offsetX, 0.175f, 196.194f + offsetZ);
             case "LIBRARY":
-                return new Vector3(3.65f, 1.97f, 0);
+                return new Vector3(221.387f + offsetX, 0.175f, 178.17f + offsetZ);
             default:
-                Debug.LogWarning("Unknown destination: " + destination);
+                Debug.LogWarning($"Unknown destination: {destination}");
                 return Vector3.zero;
         }
     }
 
-    private void StartPathfinding(Vector3 targetPosition)
+    private bool IsAtDestination()
     {
-        StopAllCoroutines();
-        StartCoroutine(FindPath(transform.position, targetPosition));
-    }
-
-    private IEnumerator FindPath(Vector3 startPos, Vector3 targetPos)
-    {
-        Node startNode = gridManager.GetNodeFromWorldPoint(startPos);
-        Node targetNode = gridManager.GetNodeFromWorldPoint(targetPos);
-
-        if (startNode == null || targetNode == null)
+        if (!agent.pathPending)
         {
-            Debug.LogError("Invalid Start or Target Node");
-            yield break;
-        }
-
-        List<Node> openSet = new List<Node> { startNode };
-        HashSet<Node> closedSet = new HashSet<Node>();
-        currentPath.Clear();
-
-        while (openSet.Count > 0)
-        {
-            Node currentNode = openSet[0];
-            for (int i = 1; i < openSet.Count; i++)
+            if (agent.remainingDistance <= agent.stoppingDistance)
             {
-                if (openSet[i].fCost < currentNode.fCost ||
-                    (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
+                if (!agent.hasPath || agent.velocity.sqrMagnitude == 0f)
                 {
-                    currentNode = openSet[i];
-                }
-            }
-
-            openSet.Remove(currentNode);
-            closedSet.Add(currentNode);
-
-            if (currentNode == targetNode)
-            {
-                currentPath = RetracePath(startNode, targetNode);
-                StartCoroutine(MoveAlongPath(currentPath));
-                yield break;
-            }
-
-            foreach (Node neighbor in gridManager.GetNeighbors(currentNode))
-            {
-                if (!neighbor.walkable || closedSet.Contains(neighbor))
-                    continue;
-
-                int newCostToNeighbor = currentNode.gCost + GetDistance(currentNode, neighbor);
-                if (newCostToNeighbor < neighbor.gCost || !openSet.Contains(neighbor))
-                {
-                    neighbor.gCost = newCostToNeighbor;
-                    neighbor.hCost = GetDistance(neighbor, targetNode);
-                    neighbor.parent = currentNode;
-
-                    if (!openSet.Contains(neighbor))
-                        openSet.Add(neighbor);
+                    return true;
                 }
             }
         }
-
-        Debug.LogError("Path not found.");
+        return false;
     }
 
-    private List<Node> RetracePath(Node startNode, Node endNode)
+    private void StopAgent()
     {
-        List<Node> path = new List<Node>();
-        Node currentNode = endNode;
+        agent.ResetPath();
+        animator.SetBool("isWalking", false);
+        //Debug.Log("Agent has reached the destination.");
 
-        while (currentNode != startNode)
-        {
-            path.Add(currentNode);
-            currentNode = currentNode.parent;
-        }
+        // Stop agent rotation
+        agent.updateRotation = false;
 
-        path.Reverse();
-        return path;
+        
     }
 
-    private IEnumerator MoveAlongPath(List<Node> path)
+    private void StartWalking()
     {
-        foreach (Node node in path)
+        animator.SetBool("isWalking", true);
+
+        // Allow agent rotation during walking
+        agent.updateRotation = true;
+
+        Vector3 direction = agent.velocity.normalized;
+        if (direction.sqrMagnitude > 0.1f) // Prevent jittering due to very small adjustments
         {
-            Vector3 targetPos = node.worldPosition;
-            while (Vector3.Distance(transform.position, targetPos) > 0.1f)
-            {
-                Vector3 newPosition = Vector3.MoveTowards(transform.position, targetPos, pathfindingMoveSpeed * Time.deltaTime);
-                rb.MovePosition(newPosition);
-
-                Vector2 direction = (targetPos - transform.position).normalized;
-                animator.SetFloat("moveX", direction.x);
-                animator.SetFloat("moveY", direction.y);
-                animator.SetBool("isMoving", true);
-
-                yield return null;
-            }
-
-            rb.MovePosition(targetPos);
-        }
-
-        isPathfinding = false;
-        animator.SetBool("isMoving", false);
-
-        // Initiate a conversation with another agent once movement completes
-        if (conversationTool != null && agentBehavior != null)
-        {
-            conversationTool.StartConversation(agentBehavior, agentBehavior); // Passing agentBehavior for both parameters for testing
+            Quaternion targetRotation = Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z));
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
         }
     }
 
-    private int GetDistance(Node nodeA, Node nodeB)
+    private void StopWalking()
     {
-        int distX = Mathf.Abs(nodeA.gridX - nodeB.gridX);
-        int distY = Mathf.Abs(nodeA.gridY - nodeB.gridY);
-        return distX + distY;
+        animator.SetBool("isWalking", false);
     }
+
+    
 }

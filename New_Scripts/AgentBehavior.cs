@@ -6,42 +6,27 @@ using TMPro;
 
 public class AgentBehavior : MonoBehaviour
 {
-    // Identifier for the agent
-    public string agentName = "Agent_1";  // Set unique name for each agent
-
-    // UI elements for the dialogue box
-    public TMP_Text dialogueText;
+    public string agentName = "Agent_1";  
+    public TMP_Text dialogueText; // TextMeshPro for displaying dialogue
     public GameObject dialoguePanel;
-
-    // Mood variable that can be customized via Input Field
-    public string mood = "sleepy and want to be somewhere familiar"; // Default mood
-
-    // Reference to the Input Field where the user can change the mood
-    public TMP_InputField moodInputField;  // Link this in the Unity Inspector
-
-    // Path to your local Ollama model
-    public string ollamaPath = @"C:\Users\roman\AppData\Local\Programs\Ollama\ollama.exe"; // Adjust for each agent in Unity Inspector
-    public string modelName = "llama3";  // Each agent can use the same or different model
-
-    // Reference to the Interpreter and Tools
-    private Interpreter interpreter;
-    public Tool_Move moveTool;   // Set the correct Tool_Move for this agent in Unity
-    public Tool_Reset resetTool; // Set the correct Tool_Reset for this agent in Unity
-
-    // Track whether Ollama has been queried
+    public string mood = "sleepy and want to be somewhere familiar"; 
+    public TMP_InputField moodInputField;  
+    public string ollamaPath = @"C:\Users\roman\AppData\Local\Programs\Ollama\ollama.exe";
+    public string modelName = "qwen:14b";
+    
+    public Tool_Move moveTool;   
+    public Tool_Reset resetTool;
+    
     private bool isPrompting = false;
-    private string lastResponse;
 
     void Start()
     {
         dialoguePanel.SetActive(true);        
-        interpreter = FindObjectOfType<Interpreter>(); // Find the interpreter in the scene
         
-        // If the Input Field exists, set the default mood and listen for changes
         if (moodInputField != null)
         {
-            moodInputField.text = mood; // Set the default value in the Input Field
-            moodInputField.onValueChanged.AddListener(OnMoodChanged); // Listen for input changes
+            moodInputField.text = mood; 
+            moodInputField.onValueChanged.AddListener(OnMoodChanged); 
         }
     }
 
@@ -49,16 +34,19 @@ public class AgentBehavior : MonoBehaviour
     {
         if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && Input.GetKeyDown(KeyCode.Space) && !isPrompting)
         {
-            isPrompting = true; // Prevent multiple triggers
-            string initialPrompt = $"Where do you want to move? You exist as an agent in a simplistic multiagent environment. You have 4 options (park, home, gym, library). Please briefly respond with which one you want to choose, and then shortly explain why. Let's assume right now your mood is {mood}.";
+            isPrompting = true;
+            string initialPrompt = $"You are an agent in a multiagent environment. Your task is to choose an action based on your mood. " +
+                                   $"The possible actions (tools) are:\n1. MOVE: To move to a location. The location options are PARK, HOME, GYM, and LIBRARY.\n" +
+                                   $"2. ERROR: If the response is unclear.\n\n" +
+                                   $"You will always output your decision in this format:\n[\"TOOL\", \"CONTEXT\"]\n\n" +
+                                   $"Your current mood is {mood}. Where do you want to move?";
             StartCoroutine(AskOllama(initialPrompt));
         }
     }
 
-    // Called when the mood input field value changes
     public void OnMoodChanged(string newMood)
     {
-        mood = newMood;  // Update the mood in the script
+        mood = newMood; 
     }
 
     public IEnumerator AskOllama(string prompt)
@@ -67,7 +55,7 @@ public class AgentBehavior : MonoBehaviour
 
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
-            FileName = ollamaPath,  // Use the public path set in the Unity Inspector
+            FileName = ollamaPath,
             Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -90,35 +78,55 @@ public class AgentBehavior : MonoBehaviour
             yield return new WaitUntil(() => process.HasExited);
 
             string result = output.ToString().Trim();
-            ShowDialogue(result);
-
-            // Send agent-specific LLM details to the interpreter along with the agent's tools
-            interpreter.ProcessAgentResponse(result, agentName, moveTool, resetTool);
+            AppendToDialogue($"LLM Response: {result}"); // Append the raw response
+            ProcessResponse(result); // Process the response directly
             isPrompting = false;
         }
     }
 
-    public string GetCurrentResponse()
-    {
-        return dialogueText.text;
-    }
-
-    // Method to generate a response based on another agent's input
-    public IEnumerator GenerateResponse(string input)
-    {
-        string prompt = $"You are talking to another agent. They said: '{input}'. How would you respond?";
-        yield return AskOllama(prompt);
-    }
-
-    public string GetLastResponse()
-    {
-        return lastResponse;
-    }
-
-    public void ShowDialogue(string message)
+    public void AppendToDialogue(string message)
     {
         dialoguePanel.SetActive(true);
-        dialogueText.text = message;
-        lastResponse = message;  // Store the last response for conversation
+
+        // Append new message to the existing text with a space in between
+        dialogueText.text += (string.IsNullOrEmpty(dialogueText.text) ? "" : "\n\n") + message;
+    }
+
+    private void ProcessResponse(string response)
+    {
+        // Parse the response (expected format: ["TOOL", "CONTEXT"])
+        response = response.Replace("[", "").Replace("]", "").Replace("\"", "");
+        string[] parsedResponse = response.Split(',');
+
+        if (parsedResponse.Length != 2)
+        {
+            UnityEngine.Debug.LogError("Invalid response format: " + response);
+            AppendToDialogue($"Error: Invalid response format."); // Append the error
+            resetTool.ExecuteReset("Invalid response format.");
+            return;
+        }
+
+        string tool = parsedResponse[0].Trim();
+        string context = parsedResponse[1].Trim();
+
+        // Log and append the tool and context to the dialogue
+        AppendToDialogue($"Tool: {tool}\nContext: {context}");
+
+        // Determine which tool to execute
+        switch (tool.ToUpper())
+        {
+            case "MOVE":
+                UnityEngine.Debug.Log($"Agent is moving to: {context}");
+                moveTool.ExecuteMove(context);
+                break;
+            case "ERROR":
+                UnityEngine.Debug.LogWarning($"Error occurred: {context}");
+                resetTool.ExecuteReset(context);
+                break;
+            default:
+                UnityEngine.Debug.LogError($"Unknown tool: {tool}");
+                resetTool.ExecuteReset($"Unknown tool: {tool}");
+                break;
+        }
     }
 }
